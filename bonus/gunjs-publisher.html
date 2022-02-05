@@ -1,0 +1,17 @@
+<script src="publisher-browser.js"></script>
+<script>
+let publisher = new OshuPublisher({
+	HOST_ADDRESS: 'http://localhost:8765/gun',
+	ORCHESTRATOR_ID: 'v2GrOmuCGoRpFI9wYk3GOh1NeO85woj1SXzxTJ1s2YA.Z6nlRkRivWKDOm3Fk38B7TZH6VHRd9f_X7ms7ZAxmJE'
+})
+publisher.initialize(async (ack) => {
+console.log('[initialized]', ack)
+
+const msg = publisher.createMessage({ text: 'do something cool', math: 'Math.sqrt((2+2)*2)'})
+publisher.sendMessage(msg, (key, data) => {
+	console.log('[listener]', key, data.message)
+})
+})
+</script>
+
+
