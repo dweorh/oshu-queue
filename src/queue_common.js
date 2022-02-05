@@ -21,6 +21,12 @@ module.exports = {
         static get IN_PROGRESS() { return 2 }
         static get DONE() { return 3 }
         static get FAILED() { return 4 }
+        static get REJECTED() { return 5 }
+    },
+    OshuSubscriberStatus: class {
+        static get UNKNOWN() { return 0 }
+        static get FREE() { return 1 }
+        static get BUSY() { return 2 }
     },
     OshuQueueCommon: class {
         pair = false

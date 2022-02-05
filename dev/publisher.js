@@ -11,7 +11,7 @@ app.listen(null, async () => {
   publisher.initialize(async (ack) => {
     console.log('[initialized]', ack)
 
-    const msg = publisher.createMessage({ text: 'do something cool', math: 'Math.sqrt((2+2)*2)'})
+    const msg = publisher.createMessage({ text: 'do something cool', math: 'Math.sqrt((2+2)*2)+2'})
     publisher.sendMessage(msg, (key, data) => {
         console.log('[listener]', key, data.message)
     })

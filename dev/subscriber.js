@@ -5,13 +5,14 @@ const express = require('express');
 // const SEA = require('../src/libs/gun/sea')
 const app    = express();
 const resolver = payload => {
+  let response = {}
   if (payload.data.math) {
-    payload.response = {
+    response = {
       math: eval(payload.data.math)
     }
   }
-  console.log('[resolver]', payload)
-  return payload
+  console.log('[resolver]', payload, response)
+  return response
 }
 app.listen(null, async () => {
   console.log('[OshuSubscriber started]');
