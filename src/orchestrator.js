@@ -1,15 +1,35 @@
-const { OshuQueueCommon, OshuQueueStatus, OshuSubscriberStatus, SEA } = require('./queue_common')
-const OshuQueueMessage = require('./queue_message')
-const OshuJobMessage = require('./job_message')
-const { v4: uuidv4 } = require('uuid');
-module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
+import { OshuQueueCommon, OshuQueueStatus, OshuSubscriberStatus, OshuQueueBasicAuth, OshuQueueAuthEnvelope, SEA } from './queue_common.js';
+import { OshuQueueMessage } from './queue_message.js';
+import { OshuJobMessage } from './job_message.js'
+import { v4 as uuidv4 } from 'uuid';
+
+export class OshuQueueOrchestrator extends OshuQueueCommon{
     queue_in = {}
     subscribers = {} // aka workers
+    auth_publisher = false
+    auth_subscriber = false
+    verbose = false
     constructor(params) {
         super()
         this.pair = params.ORCHESTRATOR_PAIR || false
         this.peer = params.HOST_ADDRESS
+        this.verbose = params.VERBOSE && params.VERBOSE.toLowerCase() === 'true'
     }
+
+    setAuthPublisher(auth) {
+        if (auth && auth instanceof OshuQueueBasicAuth === false) {
+            throw new Error('Wrong type of the authenticator for publishers!')
+        }
+        this.auth_publisher = auth
+    }
+
+    setAuthSubscriber(auth) {
+        if (auth && auth instanceof OshuQueueBasicAuth === false) {
+            throw new Error('Wrong type of the authenticator for subscribers!')
+        }
+        this.auth_subscriber = auth
+    }
+
     async initialize(cb) {
         this._init(async () => {
             if (this.created) {
@@ -65,12 +85,21 @@ module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
     async _queueInHandler(data, key) {
         if (!this.queue_in[key] && data.status === OshuQueueStatus.CREATED && !this._existsInQueue(key)) {
             const idx = uuidv4() // to break a chain publisher <-> subscriber
-            this.queue_in[idx] = {
-                key: key,
-                data: await OshuQueueMessage.from(data, data.epub, this.keys.main),
-                ts: Date.now()
+            const message = await OshuQueueMessage.from(data, data.epub, this.keys.main)
+            let authorized = true
+            if (this.auth_publisher) {
+                authorized = this.auth_publisher.auth(message.auth)
             }
-            this._findSubscriberForJob(idx)
+            if (authorized) { // for now if not authorized will be ignored
+                this.queue_in[idx] = {
+                    key: key,
+                    data: message,
+                    ts: Date.now()
+                }
+                this._findSubscriberForJob(idx)
+            } else if (this.verbose) {
+                console.info('[publisher rejected]')
+            }
         }
     }
 
@@ -86,20 +115,37 @@ module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
                     pub: _key,
                     epub: false,
                     status: OshuSubscriberStatus.UNKNOWN,
-                    type: false
+                    type: false,
+                    auth: false
                 }
                 this.subscribers[_key].ts = nodes[_key]
                 this.gun.user().get('queue-sub').get(_key).once(async data => {
                     const is_new = this.subscribers[_key].status === OshuSubscriberStatus.UNKNOWN
+                    let authorized = true
                     this.subscribers[_key].status = data.status
                     this.subscribers[_key].type = data.type
                     this.subscribers[_key].epub = data.epub
                     
-                    if (is_new) {
-                        this._singleSubJobsHandler(_key)
+                    if (data.auth) {
+                        this.subscribers[_key].auth = await OshuQueueAuthEnvelope.from(data.auth, data.epub, this.keys.main)
                     }
-                    if (this.subscribers[_key].status === OshuSubscriberStatus.FREE) {
-                        this._findJobForSubscriber(_key)
+
+                    if (this.auth_subscriber) {
+                        authorized = this.auth_subscriber.auth(this.subscribers[_key].auth)
+                    }
+
+                    if (authorized) {
+                        if (is_new) {
+                            this._singleSubJobsHandler(_key)
+                        }
+                        if (this.subscribers[_key].status === OshuSubscriberStatus.FREE) {
+                            this._findJobForSubscriber(_key)
+                        }
+                    } else {
+                        if (this.verbose) {
+                            console.info('[subscriber rejected]')
+                        }
+                        delete this.subscribers[_key]
                     }
                 })
             }
@@ -131,7 +177,7 @@ module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
                                     .get('status')
                                     .put(OshuQueueStatus.CREATED)
                                 this.gun.user().get('queue-jobs').get(subscriber_id).get(_key).put(null)
-                                throw new Error()
+                                // throw new Error()
                             break
                             case OshuQueueStatus.DONE:
                             case OshuQueueStatus.FAILED:
@@ -198,6 +244,8 @@ module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
         this.queue_in[idx].data.message.status = OshuQueueStatus.ASSIGNED
         this.queue_in[idx].data.ts = Date.now()
 
+        this.subscribers[subscriber_id].status = OshuSubscriberStatus.BUSY
+
         this.gun.user().get('queue-jobs').get(subscriber_id).get(idx).put(await message.toObject(subscriber_epub, this.keys.main))
 
         this.gun.user().get('queue-log').get(this.pair.pub).get(task.key).put({
@@ -207,4 +255,8 @@ module.exports = class OshuQueueOrchestrator extends OshuQueueCommon{
         })
         this.gun.user().get('queue-in').get(task.key).get('status').put(OshuQueueStatus.ASSIGNED)
     }
+}
+
+export default {
+    OshuQueueOrchestrator
 }

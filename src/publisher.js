@@ -1,6 +1,6 @@
-const { OshuQueueCommon, OshuQueueStatus } = require('./queue_common')
-const OshuQueueMessage = require('./queue_message')
-module.exports = class OshuPublisher extends OshuQueueCommon {
+import { OshuQueueCommon, OshuQueueStatus, OshuQueueAuthEnvelope } from './queue_common.js'
+import { OshuQueueMessage } from './queue_message.js'
+export class OshuPublisher extends OshuQueueCommon {
     orchestrator_id = false
     orchestrator = {
         epub: false,
@@ -8,11 +8,17 @@ module.exports = class OshuPublisher extends OshuQueueCommon {
     }
     orch_handler = false
     messages = {}
-    constructor(params) {
+    auth = false
+
+    constructor(params, auth = false) {
         super()
         this.pair = params.PUBLISHER_PAIR || false
         this.orchestrator_id = params.ORCHESTRATOR_ID || false
         this.peer = params.HOST_ADDRESS
+        if (auth && auth instanceof OshuQueueAuthEnvelope === false) {
+            throw new Error('Wrong type of the auth envelope!')
+        }
+        this.auth = auth
     }
 
     async initialize(cb) {
@@ -37,7 +43,9 @@ module.exports = class OshuPublisher extends OshuQueueCommon {
     }
 
     createMessage(data) {
-        return new OshuQueueMessage(this.pair, data)
+        const message =  new OshuQueueMessage(this.pair, data)
+        message.setAuth(this.auth)
+        return message
     }
 
     async encryptMessage(message) {
@@ -79,4 +87,8 @@ module.exports = class OshuPublisher extends OshuQueueCommon {
         if (message instanceof OshuQueueMessage === false)
             throw new Error('Message needs to be an instance of OshuQueueMessage not an ' + message.constructor.name)
     }
+}
+
+export default {
+    OshuPublisher
 }

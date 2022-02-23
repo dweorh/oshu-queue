@@ -1,5 +1,5 @@
-const { SEA, OshuQueueStatus } = require('./queue_common')
-module.exports = class OshuJobMessage {
+import { SEA, OshuQueueStatus } from './queue_common.js'
+export class OshuJobMessage {
     type = false
     job = {
         id: false,
@@ -35,4 +35,7 @@ module.exports = class OshuJobMessage {
         }
         return obj
     }
+}
+export default {
+    OshuJobMessage
 }

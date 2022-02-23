@@ -1,6 +1,8 @@
-const OshuJobMessage = require('./job_message')
-const { OshuQueueCommon, OshuQueueStatus, OshuSubscriberStatus, SEA } = require('./queue_common')
-module.exports = class OshuSubscriber extends OshuQueueCommon {
+// const OshuJobMessage = require('./job_message')
+// const { OshuQueueCommon, OshuQueueStatus, OshuSubscriberStatus, SEA } = require('./queue_common')
+import { OshuQueueCommon, OshuQueueStatus, OshuSubscriberStatus, OshuQueueAuthEnvelope } from './queue_common.js';
+import { OshuJobMessage } from './job_message.js'
+export class OshuSubscriber extends OshuQueueCommon {
     orchestrator_id = false
     orchestrator = {
         epub: false,
@@ -14,7 +16,9 @@ module.exports = class OshuSubscriber extends OshuQueueCommon {
     type = false
     resolver = false
     jobs = {}
-    constructor(params, resolver) {
+    auth = false
+    auth_encrypted = false
+    constructor(params, resolver, auth = false) {
         super()
         this.pair = params.SUBSCRIBER_PAIR || false
         this.orchestrator_id = params.ORCHESTRATOR_ID || false
@@ -28,6 +32,10 @@ module.exports = class OshuSubscriber extends OshuQueueCommon {
             throw new Error('The `resolver` needs to be a function.')
         }
         this.resolver = resolver
+        if (auth && auth instanceof OshuQueueAuthEnvelope === false) {
+            throw new Error('Wrong type of the auth envelope!')
+        }
+        this.auth = auth
     }
 
     async initialize(cb) {
@@ -60,14 +68,27 @@ module.exports = class OshuSubscriber extends OshuQueueCommon {
         })
     }
 
+    async _encryptAuth () {
+        if (this.orchestrator.epub && !this.auth_encrypted) {
+            this.auth_encrypted = await this.auth.encrypt(this.orchestrator.epub, this.pair)
+        }
+    }
+
     async _reportStatus(cb) {
+        const data = {
+            epub: this.pair.epub,
+            status: this.status,
+            type: this.type
+        }
+        if (this.auth) {
+            if (!this.auth_encrypted) {
+                await this._encryptAuth()
+            }
+            data.auth = this.auth_encrypted
+        }
         this.queue_sub.get(this.pair.pub).put(
             // await this.status.toObject(this.orchestrator.epub, this.pair), 
-            {
-                epub: this.pair.epub,
-                status: this.status,
-                type: this.type
-            },
+            data,
             cb, 
             {opt: { cert: this.orchestrator.certs['queue-sub'] }}
         )
@@ -114,4 +135,8 @@ module.exports = class OshuSubscriber extends OshuQueueCommon {
             this._reportStatus()
         }
     }
+}
+
+export default {
+    OshuSubscriber
 }
